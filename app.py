@@ -10,6 +10,7 @@ import io
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret-key-olimpiada-123' # В реальном проекте скрыть
+# Настройка базы данных
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///canteen.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -604,6 +605,18 @@ def publish_dish(item_id):
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+@app.route('/reset_db')
+def reset_db():
+    db.drop_all()
+    db.create_all()
+    
+    # Создаем дефолтного админа, чтобы не потерять доступ
+    hashed_pw = generate_password_hash('admin', method='scrypt')
+    admin = User(username='admin', password_hash=hashed_pw, role='admin')
+    db.session.add(admin)
+    db.session.commit()
+    return "База данных сброшена. Логин: admin, Пароль: admin"
 
 if __name__ == '__main__':
     with app.app_context():
