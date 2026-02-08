@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход - Smart Столовая</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div style="position: absolute; top: 20px; right: 20px;">
+        <label class="switch">
+            <input type="checkbox" id="theme-toggle">
+            <span class="slider round">
+                <i class="fas fa-sun sun-icon"></i>
+                <i class="fas fa-moon moon-icon"></i>
+            </span>
+        </label>
+    </div>
+
+    <div class="container auth-container">
+        <div class="bento-card auth-card">
+            <div class="logo" style="justify-content: center; margin-bottom: 30px;">
+                <i class="fas fa-utensils"></i> Smart Столовая
+            </div>
+            
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert {{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form action="{{ url_for('login') }}" method="POST">
+                <div class="input-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" name="username" placeholder="Логин" required>
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" name="password" placeholder="Пароль" required>
+                </div>
+                
+                <button type="submit" class="btn-primary">Войти</button>
+            </form>
+            
+            <p style="margin-top: 20px; color: var(--text-muted);">
+                Нет аккаунта? <a href="{{ url_for('register') }}" style="color: var(--accent);">Зарегистрироваться</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const toggle = document.getElementById('theme-toggle');
+        if (localStorage.getItem('theme') === 'light') { document.body.classList.add('light-theme'); toggle.checked = true; }
+        toggle.onchange = () => {
+            if (toggle.checked) { document.body.classList.add('light-theme'); localStorage.setItem('theme', 'light'); }
+            else { document.body.classList.remove('light-theme'); localStorage.setItem('theme', 'dark'); }
+        }
+    </script>
+</body>
+</html>

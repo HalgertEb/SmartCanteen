@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Bento Canteen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+</head>
+<body>
+    <nav>
+        <div class="logo">
+            <i class="ph-fill ph-bowl-food"></i>
+            Smart Canteen
+        </div>
+        {% if current_user.is_authenticated %}
+            <div class="user-info">
+                <span>
+                    <i class="ph-fill ph-user-circle" style="color: var(--accent); vertical-align: middle;"></i>
+                    {{ current_user.username }} <small style="opacity: 0.7">({{ current_user.role }})</small>
+                </span>
+                <a href="{{ url_for('logout') }}" class="btn-logout">Выйти</a>
+            </div>
+        {% endif %}
+    </nav>
+    
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert {{ category }}">
+                        {% if category == 'success' %}
+                            <i class="ph-bold ph-check-circle"></i>
+                        {% else %}
+                            <i class="ph-bold ph-warning-circle"></i>
+                        {% endif %}
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

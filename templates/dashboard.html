@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Личный кабинет - Smart Столовая</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ now.timestamp() }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <nav>
+        <div class="nav-left">
+            <button id="settings-btn" class="btn-icon settings-trigger" title="Настройки профиля"><i class="fas fa-cog"></i></button>
+            <!-- Notifications -->
+            <div class="notification-wrapper" style="position: relative;">
+                <button class="btn-icon" id="notif-btn" onclick="toggleNotifications()">
+                    <i class="ph ph-bell" style="font-size: 1.5rem;"></i>
+                    <span class="notification-badge" id="notif-badge" style="display: none;">0</span>
+                </button>
+                <div class="notification-dropdown" id="notif-dropdown"></div>
+            </div>
+            <div class="logo"><i class="fas fa-utensils"></i> Smart Столовая</div>
+        </div>
+        <div class="user-info">
+
+            <label class="switch" style="margin-right: 15px;">
+                <input type="checkbox" id="theme-toggle">
+                <span class="slider round">
+                    <i class="fas fa-sun sun-icon"></i>
+                    <i class="fas fa-moon moon-icon"></i>
+                </span>
+            </label>
+            {% if current_user.role == 'student' %}
+            <span class="balance-tag" onclick="openModal('topup-modal')" title="Пополнить баланс">
+                <i class="fas fa-wallet"></i> {{ current_user.balance }} ₽ <i class="fas fa-plus-circle"></i>
+            </span>
+            {% endif %}
+            <span>{{ current_user.username }} (
+                {% if current_user.role == 'student' %}Ученик
+                {% elif current_user.role == 'cook' %}Повар
+                {% elif current_user.role == 'admin' %}Администратор
+                {% else %}{{ current_user.role }}{% endif %}
+            )</span>
+            <a href="{{ url_for('logout') }}" class="btn-logout">Выйти</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert {{ category }}">
+                        <i class="fas fa-info-circle"></i> {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- STUDENT DASHBOARD -->
+        {% if role == 'student' %}
+            <h1>Добро пожаловать!</h1>
+            <p class="subtitle">Выбирайте вкусные блюда на сегодня.</p>
+
+            <div class="bento-grid" style="margin-bottom: 40px;">
+                <!-- Subscription Card -->
+                <div class="bento-card">
+                    <h3><i class="fas fa-id-card"></i> Абонемент</h3>
+                    <div style="margin: 20px 0;">
+                        {% if is_subscribed %}
+                            <div class="stock-tag stock-ok" style="display:inline-block; font-size: 1.2rem;">
+                                Активен до {{ current_user.subscription_end.strftime('%d.%m.%Y') }}
+                            </div>
+                            <p style="margin-top: 10px; color: var(--text-muted);">Питание включено.</p>
+                        {% else %}
+                            <div class="stock-tag stock-low" style="display:inline-block; font-size: 1.2rem;">
+                                Не активен
+                            </div>
+                            <p style="margin-top: 10px; color: var(--text-muted);">Оплачивайте каждый заказ отдельно или купите абонемент.</p>
+                            <form action="{{ url_for('buy_subscription') }}" method="POST" style="margin-top: 15px;">
+                                <button type="submit" class="btn-primary">Купить на 30 дней за 1499 ₽</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Allergies Card -->
+                <div class="bento-card">
+                    <h3><i class="fas fa-heartbeat"></i> Мои особенности</h3>
+                    <form action="{{ url_for('update_profile') }}" method="POST" style="margin-top: 15px; display: flex; flex-direction: column; height: 100%;">
+                        <div class="input-group" style="flex-grow: 1;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <input type="text" name="allergies" value="{{ current_user.allergies }}" placeholder="Аллергия на орехи, лактозу...">
+                        </div>
+                        <button type="submit" class="btn-primary" style="margin-top: auto;">Сохранить</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Student Menu Tabs -->
+            <div class="cook-tabs">
+                <button class="tab-btn active" onclick="openTab('breakfast')"><i class="fas fa-coffee"></i> Завтраки</button>
+                <button class="tab-btn" onclick="openTab('lunch')"><i class="fas fa-utensils"></i> Обеды</button>
+            </div>
+
+            <!-- Menu Grid -->
+            {% for category_name in ['breakfast', 'lunch'] %}
+            <div id="{{ category_name }}" class="tab-content" {% if category_name != 'breakfast' %}style="display: none;"{% endif %}>
+                <div class="bento-grid">
+                {% for item in menu if item.category == category_name %}
+                
+                <!-- Allergy Check Logic -->
+                {% set has_allergy = false %}
+                {% if current_user.allergies and item.allergens %}
+                    {% for alg in current_user.allergies.split(',') %}
+                        {% if alg.strip().lower() in item.allergens.lower() and alg.strip() != '' %}
+                            {% set has_allergy = true %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+
+                <div class="bento-card {% if has_allergy %}allergy-warning{% endif %}">
+                    {% if item.quantity < 5 and item.quantity > 0 %}
+                        <div class="menu-badge" style="color: orange; background: rgba(255, 165, 0, 0.15);">Мало</div>
+                    {% elif item.quantity == 0 %}
+                        <div class="menu-badge" style="color: red; background: rgba(255, 0, 0, 0.15);">Закончилось</div>
+                    {% endif %}
+                    
+                    {% if has_allergy %}
+                        <div class="allergy-badge"><i class="fas fa-exclamation-triangle"></i> Содержит аллергены!</div>
+                    {% endif %}
+                    
+                    <div class="menu-title">{{ item.name }}</div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">{{ item.allergens }}</div>
+                    <div class="menu-price">{{ item.price }} ₽</div>
+                    <div class="menu-meta">
+                        <span><i class="fas fa-cubes"></i> Осталось: {{ item.quantity }}</span>
+                    </div>
+
+                    <!-- Dynamic Buttons -->
+                    {% if item.id in ordered_item_ids %}
+                        <div style="margin-top: 20px;">
+                            <button disabled class="btn-secondary" style="width: 100%; margin-bottom: 10px; border-color: var(--accent); color: var(--accent);"><i class="fas fa-check"></i> Выдано / Оплачено</button>
+                            {% if item.quantity > 0 %}
+                            <form action="{{ url_for('buy', item_id=item.id) }}" method="GET" style="display: flex; gap: 10px;">
+                                <input type="number" name="quantity" value="1" min="1" max="{{ item.quantity }}" style="width: 70px; padding: 10px; text-align: center;">
+                                <button type="submit" class="btn-primary" style="flex-grow: 1;">
+                                    <i class="fas fa-cart-plus"></i> Купить еще
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    {% elif item.quantity > 0 %}
+                        <form action="{{ url_for('buy', item_id=item.id) }}" method="GET" style="margin-top: 20px; display: flex; gap: 10px;">
+                            <input type="number" name="quantity" value="1" min="1" max="{{ item.quantity }}" style="width: 70px; padding: 10px; text-align: center;">
+                            <button type="submit" class="btn-primary" style="flex-grow: 1;">
+                                {% if is_subscribed %} <i class="fas fa-hand-holding"></i> Получить {% else %} <i class="fas fa-credit-card"></i> Оплатить {% endif %}
+                            </button>
+                        </form>
+                    {% else %}
+                        <button disabled class="btn-primary" style="margin-top: 20px;">Нет в наличии</button>
+                    {% endif %}
+
+                    <!-- Reviews Section -->
+                    <div style="margin-top: 25px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <h4 style="margin-bottom: 10px;">Отзывы</h4>
+                        {% if item.reviews %}
+                            <div style="max-height: 100px; overflow-y: auto; margin-bottom: 10px;">
+                                {% for review in item.reviews[-3:] %}
+                                    <div style="font-size: 0.9rem; margin-bottom: 8px; background: var(--bg-input); padding: 8px; border-radius: 8px;">
+                                        <div style="color: var(--accent); font-weight: bold;">
+                                            {% for _ in range(review.rating) %}★{% endfor %}
+                                        </div>
+                                        <div>{{ review.comment }}</div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Нет отзывов</p>
+                        {% endif %}
+                        
+                        <!-- Add Review Form -->
+                        <form action="{{ url_for('add_review', item_id=item.id) }}" method="POST" style="margin-top: 10px;">
+                            <div style="display: flex; gap: 5px; margin-bottom: 5px;">
+                                <select name="rating" style="padding: 8px; width: 70px;" required>
+                                    <option value="5">5 ★</option>
+                                    <option value="4">4 ★</option>
+                                    <option value="3">3 ★</option>
+                                    <option value="2">2 ★</option>
+                                    <option value="1">1 ★</option>
+                                </select>
+                                <input type="text" name="comment" placeholder="Ваш отзыв..." style="padding: 8px;" required>
+                            </div>
+                            <button type="submit" style="width: 100%; padding: 8px; background: var(--bg-card-hover); color: white; border: 1px solid var(--border-color); border-radius: var(--radius-sm); cursor: pointer;">Оставить отзыв</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+
+        <!-- COOK DASHBOARD -->
+        {% elif role == 'cook' %}
+            <h1>Панель повара</h1>
+            
+            <!-- Tabs Navigation -->
+            <div class="cook-tabs">
+                <button class="tab-btn active" onclick="openTab('tab-dispatch')"><i class="ph ph-monitor"></i> Выдача</button>
+                <button class="tab-btn" onclick="openTab('tab-menu')"><i class="ph ph-list-plus"></i> Добавить блюдо</button>
+                <button class="tab-btn" onclick="openTab('tab-warehouse')"><i class="ph ph-package"></i> Склад</button>
+                <button class="tab-btn" onclick="openTab('tab-requests')"><i class="ph ph-shopping-cart"></i> Закупки</button>
+            </div>
+
+            <!-- 1. LIVE DISPATCH (Монитор выдачи) -->
+            <div id="tab-dispatch" class="tab-content">
+                <div class="bento-grid">
+                    <!-- Active Menu Section -->
+                    <div class="bento-card" style="grid-column: 1/-1;">
+                        <h3><i class="ph ph-broadcast"></i> Активное меню (Ученики видят это)</h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead><tr><th>Блюдо</th><th>Дата</th><th>Категория</th><th>Остаток</th><th>Статус</th></tr></thead>
+                                <tbody>
+                                    {% for item in active_dishes %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.date.strftime('%d.%m') }}</td>
+                                        <td>
+                                            {% if item.category == 'breakfast' %}Завтрак
+                                            {% elif item.category == 'lunch' %}Обед
+                                            {% else %}{{ item.category }}{% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="editable-quantity" contenteditable="true" 
+                                                  data-id="{{ item.id }}" 
+                                                  onkeydown="handleStockEdit(event, this)">
+                                                {{ item.quantity }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if item.quantity == 0 %}<span class="stock-tag stock-low">Неактивен</span>
+                                            {% else %}<span class="stock-tag stock-ok">Активно</span>{% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Orders Section -->
+                    <div class="bento-card" style="grid-column: 1/-1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="margin-bottom: 0;">Текущие заказы</h3>
+                            <button class="btn-primary btn-sm btn-confirm" onclick="completeAllOrders()" style="width: auto;">
+                                <i class="fas fa-check-double"></i> Подтвердить все
+                            </button>
+                        </div>
+                        <div id="orders-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                    <!-- Заказы будут загружаться сюда через JS -->
+                            <div style="text-align: center; color: var(--text-muted); width: 100%;">
+                                <i class="ph ph-spinner" style="font-size: 2rem; animation: spin 1s linear infinite;"></i>
+                                <p>Загрузка заказов...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. MENU CREATOR (Создание меню) -->
+            <div id="tab-menu" class="tab-content" style="display: none;">
+                <div class="sub-tabs">
+                    <button class="sub-tab-btn active" onclick="openSubTab('sub-menu-new')">Новое / Поиск</button>
+                    <button class="sub-tab-btn" onclick="openSubTab('sub-menu-active')">Активное меню</button>
+                </div>
+
+                <div class="bento-grid">
+                    <!-- Add Dish Form -->
+                    <div id="sub-menu-new" class="bento-card sub-tab-content">
+                        <h3>Добавить / Пополнить блюдо</h3>
+                        <form action="{{ url_for('add_dish') }}" method="POST">
+                            <div class="input-group">
+                                <i class="ph ph-bowl-food"></i>
+                                <input type="text" name="name" placeholder="Название (начните вводить для пополнения)" list="dish-list" required>
+                                <datalist id="dish-list">
+                                    {% for name in dish_names %}<option value="{{ name }}">{% endfor %}
+                                </datalist>
+                            </div>
+                            <div class="input-group"><i class="ph ph-currency-rub"></i><input type="number" name="price" placeholder="Цена" step="0.1" required></div>
+                            <div class="input-group"><i class="ph ph-calendar"></i><input type="date" name="date" required></div>
+                            <div class="input-group"><i class="ph ph-warning-circle"></i><input type="text" name="allergens" placeholder="Аллергены"></div>
+                            <div class="input-group"><i class="ph ph-list"></i>
+                                <select name="category">
+                                    <option value="breakfast">Завтрак</option>
+                                    <option value="lunch">Обед</option>
+                                </select>
+                            </div>
+                            <div class="input-group"><i class="ph ph-stack"></i><input type="number" name="quantity" placeholder="Кол-во" required></div>
+                            <button type="submit" class="btn-primary">Сохранить</button>
+                        </form>
+                    </div>
+
+                    <!-- Active Menu Restock -->
+                    <div id="sub-menu-active" class="bento-card sub-tab-content" style="display: none; grid-column: 1/-1;">
+                        <h3>Пополнить активные блюда</h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead><tr><th>Блюдо</th><th>Остаток</th><th>Пополнить</th></tr></thead>
+                                <tbody>
+                                    {% for item in active_dishes %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.quantity }}</td>
+                                        <td>
+                                            <form action="{{ url_for('add_dish') }}" method="POST" style="display: flex; gap: 10px;">
+                                                <input type="hidden" name="name" value="{{ item.name }}">
+                                                <input type="hidden" name="price" value="{{ item.price }}">
+                                                <input type="hidden" name="category" value="{{ item.category }}">
+                                                <input type="hidden" name="date" value="{{ item.date }}">
+                                                <input type="hidden" name="allergens" value="{{ item.allergens }}">
+                                                <input type="number" name="quantity" placeholder="+" required style="width: 80px; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-main);">
+                                                <button type="submit" class="btn-primary btn-sm"><i class="ph ph-plus"></i></button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. WAREHOUSE (Склад) -->
+            <div id="tab-warehouse" class="tab-content" style="display: none;">
+                
+                <!-- Sub-tabs for Warehouse -->
+                <div class="sub-tabs">
+                    <button class="sub-tab-btn active" onclick="openSubTab('sub-dishes')">Готовые блюда</button>
+                    <button class="sub-tab-btn" onclick="openSubTab('sub-products')">Продукты</button>
+                </div>
+
+                <div class="bento-grid">
+                    
+                    <!-- B. READY DISHES (Готовые блюда) -->
+                    <div id="sub-dishes" class="bento-card sub-tab-content" style="grid-column: 1/-1;">
+                        <h3><i class="ph ph-bowl-food"></i> Готовые блюда (Черновики)</h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead><tr><th>Блюдо</th><th>Остаток</th><th>Публикация</th></tr></thead>
+                                <tbody>
+                                    {% for item in draft_dishes %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>
+                                            <span class="editable-quantity stock-tag {% if item.quantity < 5 %}stock-low{% elif item.quantity <= 10 %}stock-med{% else %}stock-ok{% endif %}" contenteditable="true" 
+                                                  data-id="{{ item.id }}" 
+                                                  onkeydown="handleStockEdit(event, this)">
+                                                {{ item.quantity }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="stock-tag stock-low" style="margin-right: 8px;">Неактивно</span>
+                                            <form action="{{ url_for('publish_dish', item_id=item.id) }}" method="POST" style="display: inline-block;">
+                                                <button type="submit" class="btn-primary btn-sm" style="background: var(--accent);"><i class="ph ph-broadcast"></i> Добавить в меню</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- A. PRODUCTS (Сырье) -->
+                    <div id="sub-products" class="bento-card sub-tab-content" style="grid-column: 1/-1; display: none;">
+                        <h3><i class="ph ph-grains"></i> Продукты (Сырье)</h3>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead><tr><th>Продукт</th><th>Остаток</th></tr></thead>
+                                <tbody>
+                                    {% for item in products %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>
+                                            <span class="editable-quantity stock-tag {% if item.quantity < 5 %}stock-low{% elif item.quantity <= 10 %}stock-med{% else %}stock-ok{% endif %}" contenteditable="true" 
+                                                  data-id="{{ item.id }}" 
+                                                  onkeydown="handleStockEdit(event, this)">
+                                                {{ item.quantity }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. SUPPLY REQUESTS (Закупки) -->
+            <div id="tab-requests" class="tab-content" style="display: none;">
+                <div class="bento-grid">
+                    <div class="bento-card">
+                        <h3>Новая заявка</h3>
+                        <form action="{{ url_for('create_request') }}" method="POST">
+                            <div class="input-group"><i class="ph ph-package"></i><input type="text" name="product_name" placeholder="Продукт" required></div>
+                            <div class="input-group"><i class="ph ph-hash"></i><input type="number" name="quantity" placeholder="Количество" required></div>
+                            <div class="input-group"><i class="ph ph-currency-rub"></i><input type="number" name="total_cost" placeholder="Примерная стоимость" step="0.1"></div>
+                            <div class="input-group"><i class="ph ph-warning"></i>
+                                <select name="priority">
+                                    <option value="Planned">Планово</option>
+                                    <option value="Urgent">Срочно</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn-primary">Отправить</button>
+                        </form>
+                        <form action="{{ url_for('auto_request') }}" method="POST" style="margin-top: 15px;">
+                            <button type="submit" class="btn-secondary" style="width: 100%;"><i class="ph ph-magic-wand"></i> Заказать дефицит</button>
+                        </form>
+                    </div>
+
+                    <div class="bento-card" style="grid-column: span 2;">
+                        <h3>История заявок</h3>
+                    <div class="table-wrapper">
+                        <table>
+                                <thead><tr><th>Продукт</th><th>Кол-во</th><th>Приоритет</th><th>Статус</th></tr></thead>
+                            <tbody>
+                                    {% for req in requests %}
+                                <tr>
+                                        <td>{{ req.product_name }}</td>
+                                        <td>{{ req.quantity }}</td>
+                                        <td>
+                                            {% if req.priority == 'Urgent' %}<span class="stock-tag stock-low">Срочно</span>
+                                            {% else %}Планово{% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="stock-tag {% if req.status == 'Approved' %}stock-ok{% elif req.status == 'Rejected' %}stock-low{% else %}stock-med{% endif %}">
+                                                {% if req.status == 'Approved' %}Одобрено{% elif req.status == 'Pending' %}Ожидание{% elif req.status == 'Rejected' %}Отклонено{% else %}{{ req.status }}{% endif %}
+                                            </span>
+                                        </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        <!-- ADMIN DASHBOARD -->
+        {% elif role == 'admin' %}
+            <h1>Панель Администратора</h1>
+            
+            <!-- Admin Tabs -->
+            <div class="cook-tabs">
+                <button class="tab-btn active" onclick="openTab('tab-admin-finance')"><i class="ph ph-chart-line-up"></i> Финансы</button>
+                <button class="tab-btn" onclick="openTab('tab-admin-warehouse')"><i class="ph ph-package"></i> Складской учет</button>
+                <button class="tab-btn" onclick="openTab('tab-admin-requests')"><i class="ph ph-gavel"></i> Входящие заявки</button>
+                <button class="tab-btn" onclick="openTab('tab-admin-reviews')"><i class="ph ph-star"></i> Отзывы</button>
+            </div>
+            
+            <!-- 1. ANALYTICS -->
+            <div id="tab-admin-finance" class="tab-content">
+                <div class="bento-grid" style="margin-bottom: 30px;">
+                <div class="bento-card">
+                    <h3><i class="ph ph-coins"></i> Финансы</h3>
+                    <div style="margin-top: 15px;">
+                        <p style="font-size: 1.1rem; color: var(--text-muted);">Выручка сегодня</p>
+                        <p style="font-size: 2rem; font-weight: 700; color: var(--accent);">{{ stats.revenue_today }} ₽</p>
+                        <div style="height: 1px; background: var(--border-color); margin: 15px 0;"></div>
+                        <p style="font-size: 1.1rem; color: var(--text-muted);">Выручка за месяц</p>
+                        <p style="font-size: 1.5rem; font-weight: 600;">{{ stats.revenue_month }} ₽</p>
+                    </div>
+                </div>
+                
+                <div class="bento-card">
+                    <h3><i class="ph ph-users"></i> Посещаемость (Сегодня)</h3>
+                    <div style="margin-top: 15px;">
+                        <p style="font-size: 1.1rem; color: var(--text-muted);">Продано порций</p>
+                        <p style="font-size: 2rem; font-weight: 700;">{{ stats.portions_sold }}</p>
+                        <div style="margin-top: 15px;">
+                            <p style="font-size: 0.9rem; margin-bottom: 5px;">Охват учеников: {{ stats.unique_students }} / {{ stats.total_students }}</p>
+                            <div style="background: var(--bg-input); height: 8px; border-radius: 4px; overflow: hidden;">
+                                <div style="background: var(--accent); height: 100%; width: {% if stats.total_students > 0 %}{{ (stats.unique_students / stats.total_students) * 100 }}{% else %}0{% endif %}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bento-card" style="grid-column: span 2;">
+                    <h3>Динамика продаж</h3>
+                    <canvas id="salesChart" style="max-height: 200px;"></canvas>
+                </div>
+            </div>
+            </div>
+
+            <!-- 2. WAREHOUSE (Read-only) -->
+            <div id="tab-admin-warehouse" class="tab-content" style="display: none;">
+                <!-- Sub-tabs for Admin Warehouse -->
+                <div class="sub-tabs">
+                    <button class="sub-tab-btn active" onclick="openSubTab('admin-sub-dishes')">Готовые блюда</button>
+                    <button class="sub-tab-btn" onclick="openSubTab('admin-sub-products')">Продукты</button>
+                </div>
+
+                <div class="bento-grid" style="margin-bottom: 30px;">
+                    <!-- Ready Dishes -->
+                    <div id="admin-sub-dishes" class="bento-card sub-tab-content" style="grid-column: 1/-1;">
+                        <h3>Готовые блюда</h3>
+                        <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
+                        <table>
+                            <thead><tr><th>Наименование</th><th>Категория</th><th>Остаток</th><th>Статус</th></tr></thead>
+                            <tbody>
+                                    {% for item in dishes %}
+                                <tr>
+                                    <td>{{ item.name }}</td>
+                                        <td>
+                                            {% if item.category == 'breakfast' %}Завтрак
+                                            {% elif item.category == 'lunch' %}Обед
+                                            {% else %}{{ item.category }}{% endif %}
+                                        </td>
+                                    <td>{{ item.quantity }}</td>
+                                    <td>
+                                        {% if item.quantity < 5 %}<span class="stock-tag stock-low">Критично</span>
+                                        {% elif item.quantity < 10 %}<span class="stock-tag stock-med">Мало</span>
+                                        {% else %}<span class="stock-tag stock-ok">Норма</span>{% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                    <!-- Products -->
+                    <div id="admin-sub-products" class="bento-card sub-tab-content" style="grid-column: 1/-1; display: none;">
+                        <h3>Продукты (Сырье)</h3>
+                        <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead><tr><th>Наименование</th><th>Остаток</th><th>Статус</th></tr></thead>
+                                <tbody>
+                                    {% for item in products %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.quantity }}</td>
+                                        <td>
+                                            {% if item.quantity < 5 %}<span class="stock-tag stock-low">Критично</span>
+                                            {% elif item.quantity < 10 %}<span class="stock-tag stock-med">Мало</span>
+                                            {% else %}<span class="stock-tag stock-ok">Норма</span>{% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. APPROVAL CENTER & REPORTS -->
+            <div id="tab-admin-requests" class="tab-content" style="display: none;">
+                <div class="bento-grid">
+                <div class="bento-card" style="grid-column: span 2;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3><i class="ph ph-gavel"></i> Входящие заявки</h3>
+                        <a href="{{ url_for('download_report') }}" class="btn-secondary btn-sm"><i class="ph ph-download-simple"></i> Скачать отчет</a>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead><tr><th>Продукт</th><th>Кол-во</th><th>Стоимость</th><th>Приоритет</th><th>Действие</th></tr></thead>
+                            <tbody>
+                                {% for req in requests %}
+                                <tr>
+                                    <td>{{ req.product_name }}</td>
+                                    <td>{{ req.quantity }}</td>
+                                    <td>{{ req.total_cost }} ₽</td>
+                                    <td>{% if req.priority == 'Urgent' %}<span class="stock-tag stock-low">Срочно</span>{% else %}<span class="stock-tag stock-med">Планово</span>{% endif %}</td>
+                                    <td style="display: flex; gap: 10px;">
+                                        <form action="{{ url_for('approve_request', req_id=req.id) }}" method="POST">
+                                            <button type="submit" class="btn-primary btn-sm" style="background: #22c55e; border: none;">Одобрить</button>
+                                        </form>
+                                        <form action="{{ url_for('reject_request', req_id=req.id) }}" method="POST">
+                                            <button type="submit" class="btn-primary btn-sm" style="background: #ef4444; border: none;">Отклонить</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Нет новых заявок</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            </div>
+
+            <!-- 4. REVIEWS -->
+            <div id="tab-admin-reviews" class="tab-content" style="display: none;">
+                <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+                    <span style="color: var(--text-muted);">Сортировка:</span>
+                    <a href="{{ url_for('dashboard', sort='newest') }}" class="stock-tag {% if sort_by == 'newest' %}stock-ok{% else %}stock-neutral{% endif %}" style="text-decoration: none;">Новые</a>
+                    <a href="{{ url_for('dashboard', sort='rating_high') }}" class="stock-tag {% if sort_by == 'rating_high' %}stock-ok{% else %}stock-neutral{% endif %}" style="text-decoration: none;">Высокий рейтинг</a>
+                    <a href="{{ url_for('dashboard', sort='rating_low') }}" class="stock-tag {% if sort_by == 'rating_low' %}stock-ok{% else %}stock-neutral{% endif %}" style="text-decoration: none;">Низкий рейтинг</a>
+                </div>
+
+                <div class="bento-grid">
+                    {% for review in reviews %}
+                    <div class="bento-card review-card">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <div style="font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                                <i class="ph-fill ph-user-circle" style="font-size: 1.5rem; color: var(--accent);"></i>
+                                {{ review.user.username }}
+                            </div>
+                            <div style="color: var(--text-muted); font-size: 0.9rem;">{{ review.timestamp.strftime('%d.%m.%Y') }}</div>
+                        </div>
+                        <div style="margin-bottom: 10px; color: #fbbf24; font-size: 1.1rem;">
+                            {% for _ in range(review.rating) %}★{% endfor %}{% for _ in range(5 - review.rating) %}☆{% endfor %}
+                        </div>
+                        <div style="margin-bottom: 10px; font-weight: 600; color: var(--text-main);">
+                            Блюдо: {{ review.item.name }}
+                        </div>
+                        <div style="color: var(--text-muted); line-height: 1.5;">
+                            {{ review.comment }}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">Нет отзывов</div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal glass-modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Настройки</h2>
+            
+            <!-- Personal Data -->
+            <div class="settings-section">
+                <h3>Личные данные</h3>
+                <div class="data-row"><span class="data-label">Логин:</span> <span class="data-value">{{ current_user.username }}</span></div>
+                <div class="data-row"><span class="data-label">Роль:</span> <span class="data-value">
+                    {% if current_user.role == 'student' %}Ученик
+                    {% elif current_user.role == 'cook' %}Повар
+                    {% elif current_user.role == 'admin' %}Администратор
+                    {% else %}{{ current_user.role }}{% endif %}
+                </span></div>
+                {% if current_user.role == 'student' %}
+                    <div class="data-row"><span class="data-label">Аллергии:</span> <span class="data-value">{{ current_user.allergies or 'Нет' }}</span></div>
+                    <p><strong>Абонемент:</strong> 
+                        {% if is_subscribed %}Активен до {{ current_user.subscription_end.strftime('%d.%m.%Y') }}
+                        {% else %}Не активен{% endif %}
+                    </p>
+                {% endif %}
+            </div>
+
+            <!-- Change Password -->
+            <div class="settings-section">
+                <h3>Безопасность</h3>
+                
+                <!-- Toggle Button -->
+                <button type="button" class="btn-secondary" id="toggle-pwd-form">Изменить пароль</button>
+
+                <!-- Hidden Form -->
+                <form action="{{ url_for('change_password') }}" method="POST" id="pwd-form" style="display: none; margin-top: 20px; animation: slideIn 0.3s ease;">
+                    <div class="input-group password-group">
+                        <i class="fas fa-unlock"></i>
+                        <input type="password" name="old_password" placeholder="Текущий пароль" required>
+                        <i class="far fa-eye toggle-password"></i>
+                    </div>
+                    <div class="input-group password-group">
+                        <i class="fas fa-key"></i>
+                        <input type="password" name="new_password" placeholder="Новый пароль" required>
+                        <i class="far fa-eye toggle-password"></i>
+                    </div>
+                    <div class="input-group password-group">
+                        <i class="fas fa-check-circle"></i>
+                        <input type="password" name="confirm_password" placeholder="Повторите пароль" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Сохранить новый пароль</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOP UP MODAL -->
+    <div id="topup-modal" class="modal glass-modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal" onclick="document.getElementById('topup-modal').style.display='none'">&times;</span>
+            <h2>Пополнение баланса</h2>
+            <form action="{{ url_for('top_up') }}" method="POST" style="margin-top: 20px;">
+                <div class="input-group">
+                    <i class="fas fa-ruble-sign"></i>
+                    <input type="number" name="amount" placeholder="Сумма пополнения" min="1" required>
+                </div>
+                <button type="submit" class="btn-primary">Пополнить</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Modal Logic
+        const modal = document.getElementById("settings-modal");
+        const btn = document.getElementById("settings-btn");
+        const span = document.getElementsByClassName("close-modal")[0];
+        btn.onclick = () => modal.style.display = "flex";
+        span.onclick = () => modal.style.display = "none";
+        
+        window.onclick = (event) => { 
+            if (event.target == modal) modal.style.display = "none"; 
+            if (event.target == document.getElementById('topup-modal')) document.getElementById('topup-modal').style.display = "none";
+        }
+        
+        function openModal(id) { document.getElementById(id).style.display = "flex"; }
+
+        // Theme Logic
+        const toggle = document.getElementById('theme-toggle');
+        if (localStorage.getItem('theme') === 'light') { document.body.classList.add('light-theme'); toggle.checked = true; }
+        toggle.onchange = () => {
+            if (toggle.checked) { document.body.classList.add('light-theme'); localStorage.setItem('theme', 'light'); }
+            else { document.body.classList.remove('light-theme'); localStorage.setItem('theme', 'dark'); }
+        }
+
+        // Toggle Password Form
+        document.getElementById('toggle-pwd-form').onclick = function() {
+            const form = document.getElementById('pwd-form');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            this.style.display = 'none'; // Скрываем кнопку после нажатия
+        };
+
+        // Password Toggle Logic
+        document.querySelectorAll('.toggle-password').forEach(icon => {
+            icon.onclick = function() {
+                const input = this.previousElementSibling;
+            if (input.type === "password") {
+                input.type = "text";
+                this.classList.remove("fa-eye");
+                this.classList.add("fa-eye-slash");
+            } else {
+                input.type = "password";
+                this.classList.remove("fa-eye-slash");
+                this.classList.add("fa-eye");
+            }
+            }
+        });
+
+        // --- COOK DASHBOARD LOGIC ---
+
+        // 1. Tabs Switching
+        function openTab(tabName) {
+            const contents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < contents.length; i++) contents[i].style.display = "none";
+            
+            const btns = document.getElementsByClassName("tab-btn");
+            for (let i = 0; i < btns.length; i++) btns[i].classList.remove("active");
+            
+            document.getElementById(tabName).style.display = "block";
+            event.currentTarget.classList.add("active");
+        }
+
+        // 1.1 Sub-Tabs Switching (Warehouse)
+        function openSubTab(subTabName) {
+            const contents = document.getElementsByClassName("sub-tab-content");
+            for (let i = 0; i < contents.length; i++) contents[i].style.display = "none";
+            
+            const btns = document.getElementsByClassName("sub-tab-btn");
+            for (let i = 0; i < btns.length; i++) btns[i].classList.remove("active");
+            
+            document.getElementById(subTabName).style.display = "block";
+            event.currentTarget.classList.add("active");
+        }
+
+        // 2. Live Dispatch Polling (Auto-update)
+        {% if role == 'cook' %}
+        function fetchOrders() {
+            fetch('/api/get_orders')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('orders-container');
+                    if (data.length === 0) {
+                        container.innerHTML = `
+                            <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); width: 100%;">
+                                <i class="ph ph-check-circle" style="font-size: 3rem; margin-bottom: 10px;"></i>
+                                <p>Все заказы выданы!</p>
+                            </div>`;
+                        return;
+                    }
+
+                    // Simple render (in production, use diffing to avoid flicker)
+                    container.innerHTML = data.map(order => `
+                        <div class="bento-card order-card" id="order-${order.id}">
+                            <div class="order-header">
+                                <span class="order-user"><i class="ph ph-student"></i> ${order.username}</span>
+                                <span class="order-time">${order.timestamp}</span>
+                            </div>
+                            <div class="order-items">
+                                <div class="order-item"><i class="ph ph-bowl-food"></i> ${order.item_name}</div>
+                            </div>
+                            <div class="order-footer">
+                                <span class="stock-tag stock-ok">${order.status === 'Issued' ? 'Оформлено' : (order.status === 'Issued (Sub)' ? 'По абонементу' : order.status)}</span>
+                                <button class="btn-primary btn-sm btn-confirm" onclick="completeOrder(${order.id})" title="Нажмите, чтобы выдать заказ">
+                                    <i class="fas fa-check"></i> Подтвердить
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                });
+        }
+        
+        // Poll every 5 seconds
+        setInterval(fetchOrders, 5000);
+        fetchOrders(); // Initial call
+
+        // 3. Complete Order (AJAX)
+        window.completeOrder = function(orderId) {
+            fetch(`/complete_order/${orderId}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    const card = document.getElementById(`order-${orderId}`);
+                    card.style.transition = "all 0.3s ease";
+                    card.style.opacity = "0";
+                    card.style.transform = "scale(0.9)";
+                    setTimeout(() => fetchOrders(), 300); // Refresh list
+                }
+            });
+        };
+
+        // 3.1 Complete All Orders
+        window.completeAllOrders = function() {
+            if(confirm('Вы уверены, что хотите подтвердить выдачу ВСЕХ текущих заказов?')) {
+                fetch('/complete_all_orders', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if(data.success) {
+                        fetchOrders(); // Refresh list
+                    }
+                });
+            }
+        };
+
+        // 4. Inline Inventory Edit
+        window.handleStockEdit = function(e, element) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                element.blur();
+                const itemId = element.getAttribute('data-id');
+                const newQty = element.innerText;
+                
+                fetch(`/update_stock/${itemId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quantity: newQty })
+                }).then(res => {
+                    if(res.ok) {
+                        // Visual feedback
+                        element.style.color = "#22c55e";
+                        setTimeout(() => element.style.color = "", 1000);
+                    }
+                });
+            }
+        };
+        {% endif %}
+
+        // --- ADMIN CHART ---
+        {% if role == 'admin' %}
+        const ctx = document.getElementById('salesChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {{ chart_labels | tojson }},
+                datasets: [{
+                    label: 'Продажи (₽)',
+                    data: {{ chart_data | tojson }},
+                    borderColor: '#8A2BE2',
+                    backgroundColor: 'rgba(138, 43, 226, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: false } }, 
+                scales: { 
+                    y: { 
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        min: 0,
+                        max: 10000
+                    }, 
+                    x: { grid: { display: false } } 
+                } 
+            }
+        });
+        {% endif %}
+
+        // --- NOTIFICATIONS SYSTEM ---
+        function fetchNotifications() {
+            fetch('/api/get_notifications')
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('notif-badge');
+                    const dropdown = document.getElementById('notif-dropdown');
+                    
+                    // Update Badge
+                    if (data.count > 0) {
+                        badge.style.display = 'flex';
+                        badge.innerText = data.count;
+                    } else {
+                        badge.style.display = 'none';
+                    }
+
+                    // Update Dropdown Content
+                    if (data.notifications.length === 0) {
+                        dropdown.innerHTML = '<div class="notif-item" style="text-align:center; color: var(--text-muted);">Нет уведомлений</div>';
+                    } else {
+                        dropdown.innerHTML = data.notifications.map(n => `
+                            <div class="notif-item ${n.is_read ? '' : 'unread'}">
+                                <div style="font-size: 0.9rem;">${n.message}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">${n.created_at}</div>
+                            </div>
+                        `).join('');
+                    }
+                });
+        }
+
+        function toggleNotifications() {
+            const dropdown = document.getElementById('notif-dropdown');
+            const isHidden = dropdown.style.display === 'none' || dropdown.style.display === '';
+            
+            dropdown.style.display = isHidden ? 'block' : 'none';
+            
+            if (isHidden) {
+                // Mark as read when opening
+                fetch('/api/mark_notifications_read', { method: 'POST' })
+                    .then(() => document.getElementById('notif-badge').style.display = 'none');
+            }
+        }
+
+        setInterval(fetchNotifications, 30000); // Poll every 30s
+        fetchNotifications(); // Initial call
+    </script>
+</body>
+</html>
