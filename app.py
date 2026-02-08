@@ -618,6 +618,10 @@ def reset_db():
     db.session.commit()
     return "База данных сброшена. Логин: admin, Пароль: admin"
 
+@app.errorhandler(404)
+def page_not_found(e):
+    return "<h1>404 - Страница не найдена</h1><p>Возможно, обновление еще не завершилось. Попробуйте вернуться на <a href='/'>главную</a>.</p>", 404
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all() # Создает файл canteen.db при первом запуске
