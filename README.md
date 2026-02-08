@@ -73,10 +73,14 @@
 ```mermaid
 flowchart TD
     %% Определение стилей для соответствия стандартам (ГОСТ/ISO)
-    classDef term fill:#f9f,stroke:#333,stroke-width:2px;  %% Терминатор (Начало/Конец)
-    classDef proc fill:#e1f5fe,stroke:#0277bd,stroke-width:2px; %% Процесс (Действие)
-    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px; %% Решение (Условие)
-    classDef io fill:#e0f2f1,stroke:#00695c,stroke-width:2px; %% Ввод/Вывод (Данные)
+    %% Терминатор (Начало/Конец)
+    classDef term fill:#f9f,stroke:#333,stroke-width:2px;
+    %% Процесс (Действие)
+    classDef proc fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;
+    %% Решение (Условие)
+    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    %% Ввод/Вывод (Данные)
+    classDef io fill:#e0f2f1,stroke:#00695c,stroke-width:2px;
 
     Start([Начало: Вход в систему]) --> AuthCheck{Авторизован?}
     
