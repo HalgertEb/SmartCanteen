@@ -62,3 +62,57 @@
 `http://127.0.0.1:5000/reset_db`
 *   **Логин:** `admin`
 *   **Пароль:** `admin`
+
+## 🔄 Алгоритм работы (Блок-схема)
+
+Схема основного процесса обработки заказа (согласно нотации блок-схем):
+
+```mermaid
+flowchart TD
+    %% Определение стилей для соответствия стандартам (ГОСТ/ISO)
+    classDef term fill:#f9f,stroke:#333,stroke-width:2px;  %% Терминатор (Начало/Конец)
+    classDef proc fill:#e1f5fe,stroke:#0277bd,stroke-width:2px; %% Процесс (Действие)
+    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px; %% Решение (Условие)
+    classDef io fill:#e0f2f1,stroke:#00695c,stroke-width:2px; %% Ввод/Вывод (Данные)
+
+    Start([Начало: Вход в систему]) --> AuthCheck{Авторизован?}
+    
+    AuthCheck -- Нет --> InputCreds[/Ввод логина и пароля/]
+    InputCreds --> CheckCreds{Данные верны?}
+    CheckCreds -- Нет --> ErrorLogin[/Вывод ошибки/]
+    ErrorLogin --> InputCreds
+    CheckCreds -- Да --> SetSession[Установка сессии]
+    SetSession --> GetRole
+    
+    AuthCheck -- Да --> GetRole[Определение роли]
+    
+    GetRole -->|Student| MenuLoad[Загрузка меню и баланса]
+    GetRole -->|Cook| OrdersLoad[Загрузка очереди заказов]
+    
+    %% Ветвь Ученика
+    MenuLoad --> ShowMenu[/Отображение меню/]
+    ShowMenu --> ActionBuy{Нажата 'Купить'?}
+    ActionBuy -- Да --> CheckStock{Есть на складе?}
+    
+    CheckStock -- Нет --> ErrorStock[/Ошибка: Нет в наличии/]
+    CheckStock -- Да --> CheckMoney{Баланс > Цена?}
+    
+    CheckMoney -- Нет --> ErrorMoney[/Ошибка: Недостаточно средств/]
+    CheckMoney -- Да --> Transact[Списание средств]
+    Transact --> CreateOrder[Создание записи заказа]
+    CreateOrder --> NotifyCook[/Уведомление повару/]
+    NotifyCook --> End([Конец обработки])
+    
+    %% Ветвь Повара
+    OrdersLoad --> ShowOrders[/Отображение Dashboard/]
+    ShowOrders --> ActionCook{Выбор действия}
+    ActionCook -- Готовка --> MarkDone[Смена статуса: Готово]
+    MarkDone --> NotifyStudent[/Уведомление ученику/]
+    NotifyStudent --> End
+
+    %% Применение классов к блокам
+    class Start,End term;
+    class AuthCheck,CheckCreds,ActionBuy,CheckStock,CheckMoney,ActionCook decision;
+    class SetSession,GetRole,MenuLoad,OrdersLoad,Transact,CreateOrder,MarkDone proc;
+    class InputCreds,ErrorLogin,ShowMenu,ErrorStock,ErrorMoney,NotifyCook,ShowOrders,NotifyStudent,FormRequest,NotifyAdmin io;
+```
