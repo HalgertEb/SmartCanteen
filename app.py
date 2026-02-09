@@ -619,7 +619,8 @@ def logout():
 @app.route('/reset_db')
 def reset_db():
     with app.app_context():
-        db.reflect()
+        # Закрываем все текущие соединения и очищаем сессию, чтобы снять блокировки SQLite
+        db.session.remove()
         db.drop_all()
         db.create_all()
         # Создаем дефолтного админа
