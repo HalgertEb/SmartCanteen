@@ -82,6 +82,10 @@ class Order(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# --- ИНИЦИАЛИЗАЦИЯ БД (Важно для Render) ---
+with app.app_context():
+    db.create_all()
+
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ УВЕДОМЛЕНИЙ ---
 def notify_user(user_id, message):
     notif = Notification(user_id=user_id, message=message)
@@ -623,7 +627,5 @@ def page_not_found(e):
     return "<h1>404 - Страница не найдена</h1><p>Возможно, обновление еще не завершилось. Попробуйте вернуться на <a href='/'>главную</a>.</p>", 404
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all() # Создает файл canteen.db при первом запуске
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
