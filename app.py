@@ -618,18 +618,31 @@ def logout():
 
 @app.route('/reset_db')
 def reset_db():
+    # 1. Сброс соединения и попытка физического удаления файла
+    db.session.remove()
+    db.engine.dispose()
+    
+    db_path = os.path.join(app.root_path, 'canteen.db')
+    if os.path.exists(db_path):
+        try:
+            os.remove(db_path) # Удаляем файл целиком
+        except Exception:
+            with app.app_context():
+                db.drop_all() # Если файл занят, очищаем таблицы
+
+    # 2. Создание чистой базы
     with app.app_context():
-        # Закрываем все текущие соединения и очищаем сессию, чтобы снять блокировки SQLite
-        db.session.remove()
-        db.drop_all()
         db.create_all()
-        # Создаем дефолтного админа
-        hashed_pw = generate_password_hash('admin', method='scrypt')
-        admin = User(username='admin', password_hash=hashed_pw, role='admin')
-        db.session.add(admin)
-        db.session.commit()
-        flash("База данных полностью очищена. Создан стандартный администратор.", "success")
-        return redirect(url_for('login'))
+        
+        # Создаем админа
+        if not User.query.filter_by(role='admin').first():
+            hashed_pw = generate_password_hash('admin', method='scrypt')
+            admin = User(username='admin', password_hash=hashed_pw, role='admin')
+            db.session.add(admin)
+            db.session.commit()
+            
+    flash("База данных полностью уничтожена и пересоздана.", "success")
+    return redirect(url_for('login'))
 
 @app.errorhandler(404)
 def page_not_found(e):
