@@ -85,6 +85,12 @@ def load_user(user_id):
 # --- ИНИЦИАЛИЗАЦИЯ БД (Важно для Render) ---
 with app.app_context():
     db.create_all()
+    # Автоматическое создание админа, если база пуста
+    if not User.query.filter_by(role='admin').first():
+        hashed_pw = generate_password_hash('admin', method='scrypt')
+        admin = User(username='admin', password_hash=hashed_pw, role='admin')
+        db.session.add(admin)
+        db.session.commit()
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ УВЕДОМЛЕНИЙ ---
 def notify_user(user_id, message):
@@ -612,15 +618,17 @@ def logout():
 
 @app.route('/reset_db')
 def reset_db():
-    db.drop_all()
-    db.create_all()
-    
-    # Создаем дефолтного админа, чтобы не потерять доступ
-    hashed_pw = generate_password_hash('admin', method='scrypt')
-    admin = User(username='admin', password_hash=hashed_pw, role='admin')
-    db.session.add(admin)
-    db.session.commit()
-    return "База данных сброшена. Логин: admin, Пароль: admin"
+    with app.app_context():
+        db.reflect()
+        db.drop_all()
+        db.create_all()
+        # Создаем дефолтного админа
+        hashed_pw = generate_password_hash('admin', method='scrypt')
+        admin = User(username='admin', password_hash=hashed_pw, role='admin')
+        db.session.add(admin)
+        db.session.commit()
+        flash("База данных полностью очищена. Создан стандартный администратор.", "success")
+        return redirect(url_for('login'))
 
 @app.errorhandler(404)
 def page_not_found(e):
